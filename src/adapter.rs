@@ -23,6 +23,8 @@ pub struct DieselAdapter {
 pub const TABLE_NAME: &str = "casbin_rule";
 
 impl DieselAdapter {
+    /// Creates a new `DieselAdapter` by building an r2d2 connection pool from
+    /// the given database `url` with the specified `pool_size`.
     pub fn new<U: Into<String>>(url: U, pool_size: u32) -> Result<Self> {
         let manager = ConnectionManager::new(url);
         let pool = Pool::builder()
@@ -34,6 +36,24 @@ impl DieselAdapter {
         Self::with_pool(pool)
     }
 
+    /// Creates a new `DieselAdapter` from an existing r2d2 connection pool.
+    ///
+    /// This is useful when you want to share a connection pool that is already
+    /// managed by your application with the Casbin enforcer.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use diesel::r2d2::{ConnectionManager, Pool};
+    /// use diesel_adapter::{Connection, DieselAdapter};
+    ///
+    /// let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    /// let manager = ConnectionManager::<Connection>::new(database_url);
+    /// let pool = Pool::builder().max_size(8).build(manager).unwrap();
+    ///
+    /// // Share this pool between your application and DieselAdapter
+    /// let adapter = DieselAdapter::with_pool(pool).unwrap();
+    /// ```
     pub fn with_pool(pool: Pool<ConnectionManager<adapter::Connection>>) -> Result<Self> {
         let conn = pool
             .get()
@@ -435,6 +455,36 @@ mod tests {
 
     fn to_owned(v: Vec<&str>) -> Vec<String> {
         v.into_iter().map(|x| x.to_owned()).collect()
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn test_with_pool() {
+        let pool = {
+            #[cfg(feature = "postgres")]
+            {
+                let manager = ConnectionManager::new(
+                    "postgres://casbin_rs:casbin_rs@127.0.0.1:5432/casbin",
+                );
+                Pool::builder().max_size(8).build(manager).unwrap()
+            }
+
+            #[cfg(feature = "mysql")]
+            {
+                let manager = ConnectionManager::new(
+                    "mysql://casbin_rs:casbin_rs@127.0.0.1:3306/casbin",
+                );
+                Pool::builder().max_size(8).build(manager).unwrap()
+            }
+
+            #[cfg(feature = "sqlite")]
+            {
+                let manager = ConnectionManager::new("casbin.db");
+                Pool::builder().max_size(8).build(manager).unwrap()
+            }
+        };
+
+        assert!(DieselAdapter::with_pool(pool).is_ok());
     }
 
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]

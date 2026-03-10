@@ -56,6 +56,8 @@ export POOL_SIZE=8
 
 ## Example
 
+### Using `new()` with a connection string
+
 ```rust
 use diesel_adapter::casbin::prelude::*;
 use diesel_adapter::DieselAdapter;
@@ -64,6 +66,29 @@ use diesel_adapter::DieselAdapter;
 async fn main() -> Result<()> {
     let mut m = DefaultModel::from_file("examples/rbac_model.conf").await?;
     let a = DieselAdapter::new("postgres://casbin_rs:casbin_rs@127.0.0.1:5432/casbin", 8)?;
+    let mut e = Enforcer::new(m, a).await?;
+    Ok(())
+}
+```
+
+### Using `with_pool()` with an existing connection pool
+
+If your application already manages a connection pool, you can share it with the Casbin enforcer using `with_pool()`:
+
+```rust
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel_adapter::{casbin::prelude::*, Connection, DieselAdapter};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Build (or reuse) your application's existing pool.
+    // DATABASE_URL can be e.g. "postgres://user:pass@localhost:5432/mydb"
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let manager = ConnectionManager::<Connection>::new(database_url);
+    let pool = Pool::builder().max_size(8).build(manager).unwrap();
+
+    let mut m = DefaultModel::from_file("examples/rbac_model.conf").await?;
+    let a = DieselAdapter::with_pool(pool)?;
     let mut e = Enforcer::new(m, a).await?;
     Ok(())
 }
