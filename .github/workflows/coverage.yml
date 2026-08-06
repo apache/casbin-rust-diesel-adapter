@@ -29,11 +29,10 @@ jobs:
         uses: actions/checkout@master
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        run: |
+          rustup set profile minimal
+          rustup update --no-self-update stable
+          rustup default stable
 
       - name: Install PostgreSQL Dependencies
         run: sudo apt-get install libpq-dev postgresql-client

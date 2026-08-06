@@ -22,12 +22,11 @@ jobs:
         uses: actions/checkout@master
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          components: rustfmt, clippy
-          override: true
+        shell: bash
+        run: |
+          rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default ${{ matrix.rust }}
+          rustc --version && cargo --version
 
       - name: Setup PostgreSQL & MySQL & SQLite (for ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -77,54 +76,28 @@ jobs:
           echo "SQLITE3_LIB_DIR=C:\ProgramData\chocolatey\lib\SQLite\tools" >> $GITHUB_ENV
 
       - name: Cargo Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
+        run: cargo build
 
       - name: Cargo Test For PostgreSQL,async-std
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features postgres,runtime-async-std
+        run: cargo test --no-default-features --features postgres,runtime-async-std
 
       - name: Cargo Test For PostgreSQL,tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features postgres,runtime-tokio
+        run: cargo test --no-default-features --features postgres,runtime-tokio
 
       - name: Cargo Test For MySQL,async-std
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features mysql,runtime-async-std
+        run: cargo test --no-default-features --features mysql,runtime-async-std
 
       - name: Cargo Test For MySQL,tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features mysql,runtime-tokio
+        run: cargo test --no-default-features --features mysql,runtime-tokio
 
       - name: Cargo Test For SQLite,async-std
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features sqlite,runtime-async-std
+        run: cargo test --no-default-features --features sqlite,runtime-async-std
 
       - name: Cargo Test For SQLite,tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features sqlite,runtime-tokio
+        run: cargo test --no-default-features --features sqlite,runtime-tokio
 
       - name: Cargo Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        run: cargo clippy -- -D warnings
 
       - name: Cargo Fmt Check
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
