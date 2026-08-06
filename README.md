@@ -2,10 +2,10 @@
 
 [![Crates.io](https://img.shields.io/crates/v/diesel-adapter.svg)](https://crates.io/crates/diesel-adapter)
 [![Docs](https://docs.rs/diesel-adapter/badge.svg)](https://docs.rs/diesel-adapter)
-[![CI](https://github.com/casbin-rs/diesel-adapter/workflows/CI/badge.svg)](https://github.com/casbin-rs/diesel-adapter/actions)
-[![codecov](https://codecov.io/gh/casbin-rs/diesel-adapter/branch/master/graph/badge.svg)](https://codecov.io/gh/casbin-rs/diesel-adapter)
+[![CI](https://github.com/apache/casbin-rust-diesel-adapter/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/casbin-rust-diesel-adapter/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/apache/casbin-rust-diesel-adapter/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/casbin-rust-diesel-adapter)
 
-Diesel Adapter is the [Diesel](https://github.com/diesel-rs/diesel) adapter for [Casbin-RS](https://github.com/casbin/casbin-rs). With this library, Casbin can load policy from Diesel supported database or save policy to it.
+Diesel Adapter is the [Diesel](https://github.com/diesel-rs/diesel) adapter for [Casbin-RS](https://github.com/apache/casbin-rs). With this library, Casbin can load policy from Diesel supported database or save policy to it.
 
 Based on [Diesel](https://github.com/diesel-rs/diesel), The current supported databases are:
 
