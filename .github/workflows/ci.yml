@@ -11,10 +11,9 @@ on:
 jobs:
   build:
     name: Auto Build CI
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
         rust: [ stable, beta, nightly ]
 
     steps:
@@ -28,8 +27,7 @@ jobs:
           rustup default ${{ matrix.rust }}
           rustc --version && cargo --version
 
-      - name: Setup PostgreSQL & MySQL & SQLite (for ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Setup PostgreSQL & MySQL & SQLite
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev postgresql libsqlite3-dev sqlite3 libmysqlclient-dev
@@ -44,38 +42,6 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install libmysqlclient-dev
           mysql -e "create user 'casbin_rs'@'localhost' identified by 'casbin_rs'; create database casbin; grant all on \`casbin\`.* to 'casbin_rs'@'localhost';" -uroot -proot
-
-      - name: Setup PostgreSQL & MySQL & SQLite (for windows)
-        if: matrix.os == 'windows-latest'
-        shell: cmd
-        run: |
-          choco install postgresql11 --force --params '/Password:root'
-          choco install mysql sqlite
-          "C:\Program Files\PostgreSQL\11\bin\createuser" casbin_rs
-          "C:\Program Files\PostgreSQL\11\bin\createdb" casbin
-          "C:\Program Files\PostgreSQL\11\bin\psql" -c "alter user casbin_rs with encrypted password 'casbin_rs'; grant all privileges on database casbin to casbin_rs;"
-          "C:\Program Files\PostgreSQL\11\bin\psql" -d casbin -c "GRANT CREATE ON SCHEMA public TO casbin_rs;"
-          "C:\tools\mysql\current\bin\mysql" -e "create user 'casbin_rs'@'localhost' identified by 'casbin_rs'; create database casbin; grant all on `casbin`.* to 'casbin_rs'@'localhost';" -uroot
-          cd /D C:\ProgramData\chocolatey\lib\SQLite\tools
-          set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
-          if not defined VSINSTALL for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -property installationPath`) do set "VSINSTALL=%%i"
-          if not defined VSINSTALL (
-            echo Could not locate a Visual Studio installation with the MSVC toolset
-            exit /b 1
-          )
-          echo Using Visual Studio at "%VSINSTALL%"
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
-          lib /machine:x64 /def:sqlite3.def /out:sqlite3.lib
-
-      - name: Set environment variables (for windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          echo "PQ_LIB_DIR=C:\Program Files\PostgreSQL\11\lib" >> $GITHUB_ENV
-          echo "MYSQLCLIENT_LIB_DIR=C:\tools\mysql\current\lib" >> $GITHUB_ENV
-          echo "MYSQLCLIENT_VERSION=9.2.0" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=C:\ProgramData\chocolatey\lib\SQLite\tools" >> $GITHUB_ENV
 
       - name: Cargo Build
         run: cargo build
