@@ -1,41 +1,129 @@
-name: Auto Release
+name: Release
 
+# Releases are triggered manually by pushing a git tag. Nothing is released
+# automatically on merge/commit.
+#
+#   v1.4.0-rc1  ->  GitHub *pre-release* only (Apache release candidate, for voting)
+#   v1.4.0      ->  GitHub release + publish to crates.io
+#
+# Both cases attach the Apache-style source tarball as a release asset. The
+# release manager downloads that tarball and signs/checksums it locally.
 on:
   push:
-    # Sequence of patterns matched against refs/tags
     tags:
-      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
-      
-  workflow_dispatch: # TODO: remove after this workflow works
+      - "v*"
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re-)build the release from, e.g. v1.4.0-rc1"
+        required: true
+
+permissions:
+  contents: write
 
 jobs:
   release:
-    name: Auto Release by Tags
+    name: Release by Tag
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # v1.4.0-rc1 -> 1.4.0-rc1
+          FULL_VERSION="${TAG#v}"
+          # v1.4.0-rc1 -> 1.4.0 (the version the candidate is a candidate *for*)
+          VERSION="${FULL_VERSION%%-rc*}"
+
+          if [ "$FULL_VERSION" = "$VERSION" ]; then
+            IS_RC=false
+          else
+            IS_RC=true
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "full_version=$FULL_VERSION"
+            echo "version=$VERSION"
+            echo "is_rc=$IS_RC"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "tag=$TAG full_version=$FULL_VERSION version=$VERSION is_rc=$IS_RC"
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Check Cargo.toml version matches tag
+        run: |
+          CARGO_VERSION=$(grep -m1 -E '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+          if [ "$CARGO_VERSION" != "${{ steps.tag.outputs.version }}" ]; then
+            echo "Cargo.toml version ($CARGO_VERSION) does not match tag version (${{ steps.tag.outputs.version }})"
+            exit 1
+          fi
+
+      # Apache source release convention for a podling:
+      #   apache-<project>-<version>-incubating-src.tar.gz
+      # unpacking into a directory of the same base name.
+      # Release candidates reuse the plain version so the exact same artifact
+      # can become the final release once the vote passes.
+      - name: Build Apache source release tarball
+        id: tarball
+        run: |
+          BASE="apache-casbin-rust-diesel-adapter-${{ steps.tag.outputs.version }}-incubating-src"
+          git archive --format=tar --prefix="$BASE/" "${{ steps.tag.outputs.tag }}" | gzip -9 > "$BASE.tar.gz"
+          echo "name=$BASE.tar.gz" >> "$GITHUB_OUTPUT"
+          ls -l "$BASE.tar.gz"
 
       - name: Install Rust toolchain
+        if: steps.tag.outputs.is_rc == 'false'
         run: |
           rustup set profile minimal
           rustup update --no-self-update stable
           rustup default stable
 
-      - name: Cargo Login
-        run: cargo login ${{ secrets.CARGO_TOKEN }}
+      # `cargo publish` verifies the crate by building it, and the default
+      # features build against libpq.
+      - name: Install build dependencies
+        if: steps.tag.outputs.is_rc == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev
 
       - name: Cargo Publish
+        if: steps.tag.outputs.is_rc == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
         run: cargo publish
 
-      - name: GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Create GitHub pre-release (release candidate)
+        if: steps.tag.outputs.is_rc == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            "${{ steps.tarball.outputs.name }}" \
+            --title "Release Candidate ${{ steps.tag.outputs.tag }}" \
+            --notes "Apache release candidate for ${{ steps.tag.outputs.version }}. Not an official Apache release." \
+            --prerelease \
+            --verify-tag
+
+      - name: Create GitHub release
+        if: steps.tag.outputs.is_rc == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            "${{ steps.tarball.outputs.name }}" \
+            --title "Release ${{ steps.tag.outputs.tag }}" \
+            --generate-notes \
+            --verify-tag
