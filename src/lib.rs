@@ -1,5 +1,5 @@
 #[macro_use]
-extern crate diesel;
+pub extern crate diesel;
 
 mod adapter;
 mod error;
@@ -11,5 +11,5 @@ mod actions;
 
 pub use casbin;
 
-pub use adapter::DieselAdapter;
+pub use adapter::{Connection, ConnectionPool, DieselAdapter};
 pub use error::Error;

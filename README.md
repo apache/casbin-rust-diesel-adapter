@@ -68,3 +68,37 @@ async fn main() -> Result<()> {
     Ok(())
 }
 ```
+
+### Sharing an existing connection pool
+
+`DieselAdapter::new` creates its own `r2d2` pool. If your application already has
+one, use `DieselAdapter::with_pool` instead so Casbin reuses your connections
+rather than opening a second pool:
+
+```rust
+use diesel_adapter::casbin::prelude::*;
+use diesel_adapter::diesel::r2d2::{ConnectionManager, Pool};
+use diesel_adapter::{ConnectionPool, DieselAdapter};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let m = DefaultModel::from_file("examples/rbac_model.conf").await?;
+
+    // your application's pool
+    let pool: ConnectionPool = Pool::builder()
+        .max_size(8)
+        .build(ConnectionManager::new(
+            "postgres://casbin_rs:casbin_rs@127.0.0.1:5432/casbin",
+        ))
+        .unwrap();
+
+    let a = DieselAdapter::with_pool(pool.clone())?;
+    let mut e = Enforcer::new(m, a).await?;
+    Ok(())
+}
+```
+
+`ConnectionPool` is an alias for `Pool<ConnectionManager<Connection>>`, where
+`Connection` resolves to `PgConnection`, `MysqlConnection` or `SqliteConnection`
+depending on the enabled feature. `diesel` is re-exported as
+`diesel_adapter::diesel`, so you do not need to match diesel versions by hand.

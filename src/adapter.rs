@@ -15,8 +15,15 @@ use tokio::task::spawn_blocking;
 
 use std::time::Duration;
 
+/// The concrete `diesel` connection type used by this adapter, decided by the
+/// enabled database feature (`postgres`, `mysql` or `sqlite`).
+pub type Connection = adapter::Connection;
+
+/// The `r2d2` connection pool type accepted by [`DieselAdapter::with_pool`].
+pub type ConnectionPool = Pool<ConnectionManager<Connection>>;
+
 pub struct DieselAdapter {
-    pool: Pool<ConnectionManager<adapter::Connection>>,
+    pool: ConnectionPool,
     is_filtered: bool,
 }
 
@@ -34,7 +41,25 @@ impl DieselAdapter {
         Self::with_pool(pool)
     }
 
-    pub fn with_pool(pool: Pool<ConnectionManager<adapter::Connection>>) -> Result<Self> {
+    /// Build an adapter on top of an already existing connection pool, so the
+    /// pool can be shared with the rest of the application instead of letting
+    /// [`DieselAdapter::new`] open a second one.
+    ///
+    /// ```no_run
+    /// use diesel_adapter::diesel::r2d2::{ConnectionManager, Pool};
+    /// use diesel_adapter::{ConnectionPool, DieselAdapter};
+    ///
+    /// # fn main() -> diesel_adapter::casbin::Result<()> {
+    /// let pool: ConnectionPool = Pool::builder()
+    ///     .max_size(8)
+    ///     .build(ConnectionManager::new("postgres://casbin_rs:casbin_rs@127.0.0.1:5432/casbin"))
+    ///     .unwrap();
+    ///
+    /// let adapter = DieselAdapter::with_pool(pool.clone())?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_pool(pool: ConnectionPool) -> Result<Self> {
         let conn = pool
             .get()
             .map_err(|err| CasbinError::from(AdapterError(Box::new(Error::PoolError(err)))));
