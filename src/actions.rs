@@ -3,10 +3,13 @@ use crate::Error;
 use casbin::{error::AdapterError, Result};
 use diesel::{
     self,
+    dsl::sql,
     r2d2::{ConnectionManager, PooledConnection},
     result::Error as DieselError,
-    sql_query, BoolExpressionMethods, Connection as DieselConnection, ExpressionMethods, QueryDsl,
-    RunQueryDsl,
+    sql_query,
+    sql_types::Bool,
+    BoolExpressionMethods, Connection as DieselConnection, ExpressionMethods, QueryDsl,
+    QueryResult, RunQueryDsl,
 };
 
 use crate::{
@@ -23,74 +26,94 @@ pub type Connection = diesel::SqliteConnection;
 
 type Pool = PooledConnection<ConnectionManager<Connection>>;
 
-#[cfg(feature = "postgres")]
 pub fn new(conn: Result<Pool>) -> Result<usize> {
     conn.and_then(|mut conn| {
-        sql_query(format!(
-            r#"
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    id SERIAL PRIMARY KEY,
-                    ptype VARCHAR NOT NULL,
-                    v0 VARCHAR NOT NULL,
-                    v1 VARCHAR NOT NULL,
-                    v2 VARCHAR NOT NULL,
-                    v3 VARCHAR NOT NULL,
-                    v4 VARCHAR NOT NULL,
-                    v5 VARCHAR NOT NULL,
-                    CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
-                );
-            "#
-        ))
-        .execute(&mut conn)
-        .map_err(|err| AdapterError(Box::new(Error::DieselError(err))).into())
+        create_table(&mut conn)
+            .map_err(|err| AdapterError(Box::new(Error::DieselError(err))).into())
     })
+}
+
+fn create_table(conn: &mut Connection) -> QueryResult<usize> {
+    if diesel::select(sql::<Bool>(&table_exists_sql())).get_result(conn)? {
+        return Ok(0);
+    }
+    sql_query(create_table_sql()).execute(conn)
+}
+
+#[cfg(feature = "postgres")]
+fn table_exists_sql() -> String {
+    format!("to_regclass('{TABLE_NAME}') IS NOT NULL")
 }
 
 #[cfg(feature = "mysql")]
-pub fn new(conn: Result<Pool>) -> Result<usize> {
-    conn.and_then(|mut conn| {
-        sql_query(format!(
-            r#"
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    id INT NOT NULL AUTO_INCREMENT,
-                    ptype VARCHAR(12) NOT NULL,
-                    v0 VARCHAR(128) NOT NULL,
-                    v1 VARCHAR(128) NOT NULL,
-                    v2 VARCHAR(128) NOT NULL,
-                    v3 VARCHAR(128) NOT NULL,
-                    v4 VARCHAR(128) NOT NULL,
-                    v5 VARCHAR(128) NOT NULL,
-                    PRIMARY KEY(id),
-                    CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-            "#
-        ))
-        .execute(&mut conn)
-        .map_err(|err| AdapterError(Box::new(Error::DieselError(err))).into())
-    })
+fn table_exists_sql() -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM information_schema.tables \
+         WHERE table_schema = DATABASE() AND table_name = '{TABLE_NAME}')"
+    )
 }
 
 #[cfg(feature = "sqlite")]
-pub fn new(conn: Result<Pool>) -> Result<usize> {
-    conn.and_then(|mut conn| {
-        sql_query(format!(
-            r#"
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    id INTEGER PRIMARY KEY,
-                    ptype VARCHAR(12) NOT NULL,
-                    v0 VARCHAR(128) NOT NULL,
-                    v1 VARCHAR(128) NOT NULL,
-                    v2 VARCHAR(128) NOT NULL,
-                    v3 VARCHAR(128) NOT NULL,
-                    v4 VARCHAR(128) NOT NULL,
-                    v5 VARCHAR(128) NOT NULL,
-                    CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
-                );
-            "#
-        ))
-        .execute(&mut conn)
-        .map_err(|err| AdapterError(Box::new(Error::DieselError(err))).into())
-    })
+fn table_exists_sql() -> String {
+    format!("EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '{TABLE_NAME}')")
+}
+
+#[cfg(feature = "postgres")]
+fn create_table_sql() -> String {
+    format!(
+        r#"
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                ptype VARCHAR NOT NULL,
+                v0 VARCHAR NOT NULL,
+                v1 VARCHAR NOT NULL,
+                v2 VARCHAR NOT NULL,
+                v3 VARCHAR NOT NULL,
+                v4 VARCHAR NOT NULL,
+                v5 VARCHAR NOT NULL,
+                CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
+            );
+        "#
+    )
+}
+
+#[cfg(feature = "mysql")]
+fn create_table_sql() -> String {
+    format!(
+        r#"
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id INT NOT NULL AUTO_INCREMENT,
+                ptype VARCHAR(12) NOT NULL,
+                v0 VARCHAR(128) NOT NULL,
+                v1 VARCHAR(128) NOT NULL,
+                v2 VARCHAR(128) NOT NULL,
+                v3 VARCHAR(128) NOT NULL,
+                v4 VARCHAR(128) NOT NULL,
+                v5 VARCHAR(128) NOT NULL,
+                PRIMARY KEY(id),
+                CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        "#
+    )
+}
+
+#[cfg(feature = "sqlite")]
+fn create_table_sql() -> String {
+    format!(
+        r#"
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id INTEGER PRIMARY KEY,
+                ptype VARCHAR(12) NOT NULL,
+                v0 VARCHAR(128) NOT NULL,
+                v1 VARCHAR(128) NOT NULL,
+                v2 VARCHAR(128) NOT NULL,
+                v3 VARCHAR(128) NOT NULL,
+                v4 VARCHAR(128) NOT NULL,
+                v5 VARCHAR(128) NOT NULL,
+                CONSTRAINT unique_key_diesel_adapter UNIQUE(ptype, v0, v1, v2, v3, v4, v5)
+            );
+        "#
+    )
 }
 
 pub fn remove_policy(mut conn: Pool, pt: &str, rule: Vec<String>) -> Result<bool> {
